@@ -68,17 +68,35 @@ stages:
             displayName: 'Checkov Scan (warn-only)'
             continueOnError: true # advisory for now - full ruleset, not yet a merge blocker
 
-          - script: checkov -d . --check CKV_AWS_40,CKV_AWS_1 --compact --quiet
+          - script: checkov -d . --check CKV_AWS_40,CKV_AWS_1,CKV_AWS_62,CKV_AWS_63,CKV_AWS_355 --compact --quiet
             displayName: 'Checkov Scan (blocking)'
-            # no continueOnError - CKV_AWS_40 (IAM policy attached to user)
-            # and CKV_AWS_1 (S3 bucket policy) fail the build
+            # no continueOnError - hard-fails on: CKV_AWS_40 (IAM policy
+            # attached to user), CKV_AWS_1 (S3 bucket policy), CKV_AWS_62
+            # (IAM policy allows full admin - wildcard action + resource),
+            # CKV_AWS_63 (wildcard "*" action in an IAM policy), CKV_AWS_355
+            # (wildcard "*" resource for an action that supports scoping)
 
           - script: |
-              mkdir -p $(Build.ArtifactStagingDirectory)/terraform-validated
-              cp -r envs modules ssm_template $(Build.ArtifactStagingDirectory)/terraform-validated/
-              rm -rf $(Build.ArtifactStagingDirectory)/terraform-validated/envs/dev/.terraform
-            displayName: 'Stage Terraform Source'
+              set -e
+              mkdir -p $(Build.ArtifactStagingDirectory)/terraform-checks-summary
+              cat > $(Build.ArtifactStagingDirectory)/terraform-checks-summary/summary.json <<EOF
+              {
+                "status": "passed",
+                "commit": "$(Build.SourceVersion)",
+                "branch": "$(Build.SourceBranchName)",
+                "buildId": "$(Build.BuildId)",
+                "checkedAt": "$(System.PipelineStartTime)",
+                "terraformVersion": "$(TERRAFORM_VERSION)",
+                "tflintVersion": "$(TFLINT_VERSION)",
+                "checkovVersion": "$(CHECKOV_VERSION)",
+                "blockingChecks": ["CKV_AWS_40", "CKV_AWS_1", "CKV_AWS_62", "CKV_AWS_63", "CKV_AWS_355"]
+              }
+              EOF
+            displayName: 'Write Checks Summary'
 
-          - publish: $(Build.ArtifactStagingDirectory)/terraform-validated
-            artifact: terraform-validated
-            displayName: 'Publish Terraform Artifact'
+          - publish: $(Build.ArtifactStagingDirectory)/terraform-checks-summary
+            artifact: terraform-checks-summary
+            displayName: 'Publish Checks Summary'
+            # No source is published here - a Release pipeline that needs the
+            # Terraform files should checkout this same commit ($(Build.SourceVersion))
+            # directly rather than depend on a copy staged by this build.
