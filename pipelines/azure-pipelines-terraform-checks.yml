@@ -56,9 +56,13 @@ stages:
 
           - script: |
               set -e
-              python3 -m pip install --user "checkov==$(CHECKOV_VERSION)"
+              python3 -m pip install --user --break-system-packages "checkov==$(CHECKOV_VERSION)"
               echo "##vso[task.prependpath]$HOME/.local/bin"
             displayName: 'Install Checkov $(CHECKOV_VERSION)'
+            # --break-system-packages overrides Debian/Ubuntu's PEP 668 guard;
+            # --user still confines the install to the user site-packages,
+            # not the OS's apt-managed dist-packages, so this doesn't touch
+            # anything apt owns.
 
           - script: checkov -d . --compact --quiet
             displayName: 'Checkov Scan (warn-only)'
