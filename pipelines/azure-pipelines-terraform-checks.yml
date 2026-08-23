@@ -1,7 +1,7 @@
 trigger:
   branches:
     include:
-      - release/*
+      - develop
 
 pool:
   name: AWS-Agents # self-hosted agent pool (matches homelab-infrastructure's pipelines)
