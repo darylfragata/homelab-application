@@ -42,3 +42,7 @@ terraform.rc
 # Optional: ignore plan files saved before destroying Terraform configuration
 # Uncomment the line below if you want to ignore planout files.
 # planout
+
+# Stale local build output from the removed archive_file step - deployment
+# packages are built/uploaded outside Terraform now (see README).
+modules/lambda_backend/.build/
