@@ -1,0 +1,80 @@
+trigger:
+  branches:
+    include:
+      - release/*
+
+pool:
+  name: AWS-Agents # self-hosted agent pool (matches homelab-infrastructure's pipelines)
+
+variables:
+  TERRAFORM_VERSION: '1.7.5' # matches provider.tf's required_version >= 1.7.0 - bump as needed
+  TFLINT_VERSION: '0.53.0' # bump as needed - https://github.com/terraform-linters/tflint/releases
+  CHECKOV_VERSION: '3.2.257' # bump as needed - https://github.com/bridgecrewio/checkov/releases
+
+stages:
+  - stage: TerraformChecks
+    displayName: "Terraform Checks"
+    jobs:
+      - job: TerraformChecks
+        displayName: "Terraform Checks"
+        steps:
+          - checkout: self
+
+          - script: |
+              set -e
+              TF_DIR=$(Agent.ToolsDirectory)/terraform/$(TERRAFORM_VERSION)
+              mkdir -p "$TF_DIR"
+              curl -sSL -o /tmp/terraform.zip https://releases.hashicorp.com/terraform/$(TERRAFORM_VERSION)/terraform_$(TERRAFORM_VERSION)_linux_amd64.zip
+              unzip -o -q /tmp/terraform.zip -d "$TF_DIR"
+              chmod +x "$TF_DIR/terraform"
+              echo "##vso[task.prependpath]$TF_DIR"
+            displayName: 'Install Terraform $(TERRAFORM_VERSION)'
+
+          - script: terraform fmt -check -recursive
+            displayName: 'Terraform Fmt Check'
+
+          - script: terraform init -backend=false
+            displayName: 'Terraform Init (dev)'
+            workingDirectory: envs/dev
+
+          - script: terraform validate
+            displayName: 'Terraform Validate (dev)'
+            workingDirectory: envs/dev
+
+          - script: |
+              set -e
+              TFLINT_DIR=$(Agent.ToolsDirectory)/tflint/$(TFLINT_VERSION)
+              mkdir -p "$TFLINT_DIR"
+              curl -sSL -o /tmp/tflint.zip https://github.com/terraform-linters/tflint/releases/download/v$(TFLINT_VERSION)/tflint_linux_amd64.zip
+              unzip -o -q /tmp/tflint.zip -d "$TFLINT_DIR"
+              chmod +x "$TFLINT_DIR/tflint"
+              echo "##vso[task.prependpath]$TFLINT_DIR"
+            displayName: 'Install TFLint $(TFLINT_VERSION)'
+
+          - script: tflint --recursive
+            displayName: 'TFLint'
+
+          - script: |
+              set -e
+              python3 -m pip install --user "checkov==$(CHECKOV_VERSION)"
+              echo "##vso[task.prependpath]$HOME/.local/bin"
+            displayName: 'Install Checkov $(CHECKOV_VERSION)'
+
+          - script: checkov -d . --compact --quiet
+            displayName: 'Checkov Scan (warn-only)'
+            continueOnError: true # advisory for now - full ruleset, not yet a merge blocker
+
+          - script: checkov -d . --check CKV_AWS_40,CKV_AWS_1 --compact --quiet
+            displayName: 'Checkov Scan (blocking)'
+            # no continueOnError - CKV_AWS_40 (IAM policy attached to user)
+            # and CKV_AWS_1 (S3 bucket policy) fail the build
+
+          - script: |
+              mkdir -p $(Build.ArtifactStagingDirectory)/terraform-validated
+              cp -r envs modules ssm_template $(Build.ArtifactStagingDirectory)/terraform-validated/
+              rm -rf $(Build.ArtifactStagingDirectory)/terraform-validated/envs/dev/.terraform
+            displayName: 'Stage Terraform Source'
+
+          - publish: $(Build.ArtifactStagingDirectory)/terraform-validated
+            artifact: terraform-validated
+            displayName: 'Publish Terraform Artifact'
