@@ -51,7 +51,7 @@ stages:
               echo "##vso[task.prependpath]$TFLINT_DIR"
             displayName: 'Install TFLint $(TFLINT_VERSION)'
 
-          - script: tflint --recursive
+          - script: tflint --recursive --minimum-failure-severity=error
             displayName: 'TFLint'
 
           - script: |
