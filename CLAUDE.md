@@ -4,10 +4,11 @@ Application-layer AWS resources (Lambda, IAM, SSM Parameter Store) for the homel
 
 ## Structure
 
-- `envs/dev/` — the one live root module: `main.tf`, `variables.tf`, `locals.tf`, `outputs.tf`, `provider.tf` (Terraform `>= 1.7.0`), `backend.tf`, `remote_state.tf` (reads `homelab-infrastructure` state), `policy.tf` (named IAM policy docs), `provisioned_concurrency.tf` (PC scheduling config).
-- `modules/lambda_backend/` — per-function Lambda: IAM role/assume-role policy, `AWSLambdaBasicExecutionRole` attachment, optional dedicated SSM config parameter (sourced from `ssm_template/<function_name>.json`, falls back to a placeholder if missing), extra attachable policy documents, provisioned concurrency + scheduled actions.
+- `envs/dev/` — the one live root module: `main.tf`, `variables.tf`, `locals.tf`, `outputs.tf`, `provider.tf` (Terraform `>= 1.7.0`), `backend.tf`, `remote_state.tf` (reads `homelab-infrastructure` state), `policy.tf` (named IAM policy docs).
+- `modules/lambda_backend/` — per-function Lambda: IAM role/assume-role policy, `AWSLambdaBasicExecutionRole` attachment, optional dedicated SSM config parameter (sourced from `ssm_template/<function_name>.json`, falls back to a placeholder if missing), extra attachable policy documents.
 - `modules/ssm_parameter/` — thin generic SSM Parameter Store resource wrapper.
 - `modules/vpc/` — intentionally empty passthrough (no resources); re-exposes `homelab-infrastructure`'s remote-state VPC/subnet IDs as `module.vpc.*` so callers don't reach into the remote-state data source directly. Scaffolding for a future feature (e.g. API Gateway VPC link).
+- `modules/portfolio_site/` — public-read S3 bucket with static website hosting for the portfolio site (site source lives in the sibling `homelab-portfolio` repo, uploaded manually — no Terraform-managed content object, no CI/CD deploy pipeline yet). Meant to sit behind Cloudflare later; replaces an earlier CloudFront-fronted version of this same site that lived in `homelab-infrastructure` (decommissioned).
 - `src/pc_demo/`, `src/pc_monitor/` — Lambda handler Python source + prebuilt `.zip` artifacts for the two POC functions.
 - `ssm_template/` — per-function SSM config templates (e.g. `pc_demo.json`).
 - `pipelines/azure-pipelines-terraform-checks.yml` — CI pipeline (Azure DevOps — there is no `.github/workflows/` in this repo).

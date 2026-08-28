@@ -1,7 +1,7 @@
 # Terraform Checks — Tool Reference
 
-`pipelines/azure-pipelines-terraform-checks.yml` runs on every push to a
-release branch, on the self-hosted `AWS-Agents` pool. The starting need was
+`pipelines/azure-pipelines-terraform-checks.yml` runs on every push to
+`develop`, on the self-hosted `AWS-Agents` pool. The starting need was
 simple: a way to check Terraform-defined IAM policies for problems —
 overly-broad wildcards especially — before they reach production. That
 search led to Checkov, which turned out to cover far more than just IAM (a
@@ -130,6 +130,7 @@ the reason inline as a comment — not silently skipped):
 | ------------- | -------------------------------------------------------------------------------------------------------- |
 | `CKV_AWS_117` | Lambda not deployed inside a VPC — `modules/vpc` is an intentionally unused passthrough for this POC  |
 | `CKV_AWS_338` | CloudWatch log retention under 1 year — 14-day default is a deliberate homelab cost tradeoff           |
+| `CKV_AWS_1`   | S3 bucket policy allows public access — `modules/portfolio_site` is an intentional public S3 static website hosting bucket, meant to sit behind Cloudflare later |
 
 **Run it yourself, locally:**
 
@@ -172,7 +173,7 @@ get the actual files `terraform plan`/`apply` needs.
 
 ```mermaid
 flowchart TD
-    A["Developer pushes to release/*"] --> B
+    A["Developer pushes to develop"] --> B
 
     subgraph BUILD["Build pipeline (AWS-Agents) — azure-pipelines-terraform-checks.yml"]
         B["Terraform Checks stage:<br/>fmt · init · validate · tflint · checkov (scan) · checkov (gate)"]

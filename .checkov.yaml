@@ -1,3 +1,4 @@
 skip-check:
   - CKV_AWS_117 # Lambda not in a VPC - modules/vpc is an intentionally unused passthrough for this POC (see modules/vpc/main.tf's own comment)
   - CKV_AWS_338 # CloudWatch log retention < 1 year - 14-day default (modules/lambda_backend/variables.tf) is an intentional homelab cost tradeoff
+  - CKV_AWS_1 # S3 bucket policy allows public access - modules/portfolio_site is an intentional public-read static website hosting bucket, meant to sit behind Cloudflare later

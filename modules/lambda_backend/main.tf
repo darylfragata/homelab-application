@@ -98,9 +98,6 @@ resource "aws_lambda_function" "this" {
   timeout       = var.timeout
   s3_bucket     = var.artifact_bucket
   s3_key        = local.artifact_key
-  # A version must be published for provisioned_concurrent_executions - PC
-  # configs attach to a specific version (via an alias), never to $LATEST.
-  publish = var.provisioned_concurrent_executions != null
 
   dynamic "environment" {
     for_each = length(local.environment_variables) > 0 ? [local.environment_variables] : []
@@ -113,69 +110,4 @@ resource "aws_lambda_function" "this" {
   # Ensures our log group (with its retention policy) exists before the
   # function can be invoked, instead of racing AWS's own auto-create.
   depends_on = [aws_cloudwatch_log_group.this]
-}
-
-# Provisioned Concurrency is part of this same function's stack, not a
-# separate concern - only created when requested via
-# var.provisioned_concurrent_executions.
-resource "aws_lambda_alias" "this" {
-  count = var.provisioned_concurrent_executions != null ? 1 : 0
-
-  name             = var.alias_name
-  function_name    = aws_lambda_function.this.function_name
-  function_version = aws_lambda_function.this.version
-}
-
-# Static baseline PC config, used as-is whenever there's no schedule to
-# override it later.
-resource "aws_lambda_provisioned_concurrency_config" "static" {
-  count = var.provisioned_concurrent_executions != null && length(var.scheduled_actions) == 0 ? 1 : 0
-
-  function_name                     = aws_lambda_function.this.function_name
-  qualifier                         = aws_lambda_alias.this[0].name
-  provisioned_concurrent_executions = var.provisioned_concurrent_executions
-}
-
-# Same resource, but for the scheduled case: once Application Auto Scaling
-# below is registered as the scalable target, it becomes the source of truth
-# for the live capacity after each scheduled action fires. Without
-# ignore_changes here, Terraform would try to reset the count back to the
-# static baseline on every apply, fighting whichever schedule last fired.
-resource "aws_lambda_provisioned_concurrency_config" "scheduled" {
-  count = var.provisioned_concurrent_executions != null && length(var.scheduled_actions) > 0 ? 1 : 0
-
-  function_name                     = aws_lambda_function.this.function_name
-  qualifier                         = aws_lambda_alias.this[0].name
-  provisioned_concurrent_executions = var.provisioned_concurrent_executions
-
-  lifecycle {
-    ignore_changes = [provisioned_concurrent_executions]
-  }
-}
-
-resource "aws_appautoscaling_target" "this" {
-  count = length(var.scheduled_actions) > 0 ? 1 : 0
-
-  service_namespace  = "lambda"
-  resource_id        = "function:${aws_lambda_function.this.function_name}:${aws_lambda_alias.this[0].name}"
-  scalable_dimension = "lambda:function:ProvisionedConcurrency"
-  min_capacity       = var.provisioned_concurrent_executions
-  max_capacity       = var.provisioned_concurrent_executions
-
-  depends_on = [aws_lambda_provisioned_concurrency_config.scheduled]
-}
-
-resource "aws_appautoscaling_scheduled_action" "this" {
-  for_each = { for action in var.scheduled_actions : action.name => action }
-
-  name               = "${var.function_name}-${each.key}"
-  service_namespace  = aws_appautoscaling_target.this[0].service_namespace
-  resource_id        = aws_appautoscaling_target.this[0].resource_id
-  scalable_dimension = aws_appautoscaling_target.this[0].scalable_dimension
-  schedule           = each.value.schedule
-
-  scalable_target_action {
-    min_capacity = each.value.capacity
-    max_capacity = each.value.capacity
-  }
 }
