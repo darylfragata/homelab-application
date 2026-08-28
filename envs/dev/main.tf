@@ -26,10 +26,12 @@ module "lambda_backend" {
   extra_policy_documents = [
     for name in each.value.permission : local.policy_documents[name]
   ]
+}
 
-  # Looked up from provisioned_concurrency.tf's local.provisioned_concurrency_config
-  # by function name - a function with provisioned_concurrency = true but no
-  # matching entry there fails fast here rather than silently getting no PC.
-  provisioned_concurrent_executions = each.value.provisioned_concurrency ? local.provisioned_concurrency_config[each.key].base_capacity : null
-  scheduled_actions                 = each.value.provisioned_concurrency ? local.provisioned_concurrency_config[each.key].scheduled_actions : []
+module "portfolio_site" {
+  source = "../../modules/portfolio_site"
+
+  bucket_name  = local.portfolio_site.bucket_name
+  environment  = var.environment
+  project_name = var.project_name
 }

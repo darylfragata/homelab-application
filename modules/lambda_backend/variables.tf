@@ -68,25 +68,3 @@ variable "log_retention_in_days" {
   type        = number
   default     = 14
 }
-
-variable "provisioned_concurrent_executions" {
-  description = "Base number of provisioned concurrency units to keep warm. Leave null to run without Provisioned Concurrency (the default). Required (non-null) when var.scheduled_actions is non-empty - it's the baseline capacity in effect before the first scheduled action fires."
-  type        = number
-  default     = null
-}
-
-variable "alias_name" {
-  description = "Alias name fronting the published version when Provisioned Concurrency is enabled. Only relevant when provisioned_concurrent_executions is set."
-  type        = string
-  default     = "live"
-}
-
-variable "scheduled_actions" {
-  description = "Time-based changes to this function's Provisioned Concurrency, via AWS Application Auto Scaling. Each entry pins PC to `capacity` starting at `schedule` (an AWS schedule expression, e.g. \"cron(0 8 ? * MON-FRI *)\"), in effect until the next scheduled action takes over. Leave empty for a static PC count with no time-based changes. Only used when provisioned_concurrent_executions is also set."
-  type = list(object({
-    name     = string
-    schedule = string
-    capacity = number
-  }))
-  default = []
-}

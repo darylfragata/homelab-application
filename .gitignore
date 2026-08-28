@@ -46,3 +46,9 @@ terraform.rc
 # Stale local build output from the removed archive_file step - deployment
 # packages are built/uploaded outside Terraform now (see README).
 modules/lambda_backend/.build/
+
+# Locally-derived skill pointer, sourced from .agents/skills/ (tracked via
+# skills-lock.json) - not committed since a symlink here doesn't survive
+# OneDrive sync or a folder move reliably (see homelab-documentation's
+# LAB-JOURNAL.md for the stale-symlink incident this caused).
+.claude/skills/

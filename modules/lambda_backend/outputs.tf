@@ -37,13 +37,3 @@ output "log_group_arn" {
   description = "ARN of this function's CloudWatch log group."
   value       = aws_cloudwatch_log_group.this.arn
 }
-
-output "alias_arn" {
-  description = "ARN of the alias fronting the Provisioned Concurrency version, or null when PC is not enabled."
-  value       = var.provisioned_concurrent_executions != null ? aws_lambda_alias.this[0].arn : null
-}
-
-output "scheduled_action_names" {
-  description = "Names of the Application Auto Scaling scheduled actions created for this function's PC, if any."
-  value       = [for action in aws_appautoscaling_scheduled_action.this : action.name]
-}
