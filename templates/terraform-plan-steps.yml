@@ -1,0 +1,24 @@
+parameters:
+- name: envDir        # directory for the environment's Terraform configuration, e.g. dev, prod
+  type: string
+- name: tfvarsFile    # local filename stem on the agent (synced by tfvars-sync.yml), e.g. dev-app, prod-app
+  type: string
+
+steps:
+- checkout: self
+
+- script: terraform init -reconfigure
+  displayName: 'Terraform Init (${{ parameters.envDir }})'
+  workingDirectory: envs/${{ parameters.envDir }}
+
+- script: terraform validate
+  displayName: 'Terraform Validate (${{ parameters.envDir }})'
+  workingDirectory: envs/${{ parameters.envDir }}
+
+- script: terraform plan -var-file=/home/ubuntu/tfvars/${{ parameters.tfvarsFile }}.tfvars -out=tfplan
+  displayName: 'Terraform Plan (${{ parameters.envDir }})'
+  workingDirectory: envs/${{ parameters.envDir }}
+
+- publish: $(System.DefaultWorkingDirectory)/envs/${{ parameters.envDir }}/tfplan
+  artifact: tfplan-${{ parameters.envDir }}
+  displayName: 'Publish plan (${{ parameters.envDir }})'
