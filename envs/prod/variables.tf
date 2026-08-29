@@ -14,12 +14,6 @@ variable "aws_region" {
   default     = "ap-southeast-1"
 }
 
-variable "artifact_bucket_name" {
-  description = "S3 bucket holding Lambda deployment packages, uploaded externally (not by this Terraform) to <environment>/<function_name>.zip - see modules/lambda_backend."
-  type        = string
-  default     = "df-iac-artifacts"
-}
-
 variable "s3_bucket_name" {
   description = "S3 bucket name for the portfolio site. Must be globally unique."
   type        = string
