@@ -178,9 +178,11 @@ disk — but this repo has no tfvars-sync pipeline of its own.
 `homelab-infrastructure`'s `tfvars-sync-pipeline.yml` was changed from
 copying one named file per environment (`aws s3 cp`) to syncing the *whole*
 `df-iac-tfvars` bucket (`aws s3 sync`), so as long as `dev-app.tfvars`/
-`prod-app.tfvars` are uploaded flat at the bucket root (no subfolder — see
+`prod-app.tfvars` are uploaded under their environment's folder
+(`s3://df-iac-tfvars/dev/dev-app.tfvars`, `.../prod/prod-app.tfvars` — see
 `homelab-prereqs/03-upload-tfvars.sh`), that one shared sync covers this
-repo's tfvars too. No duplicate sync mechanism needed here.
+repo's tfvars too, landing at `/home/ubuntu/tfvars/dev/dev-app.tfvars` /
+`.../prod/prod-app.tfvars`. No duplicate sync mechanism needed here.
 
 ```mermaid
 flowchart TD
@@ -195,9 +197,9 @@ flowchart TD
     C -->|resources.pipelines trigger| D
 
     subgraph DEPLOY["Deploy pipeline (AWS-Agents) — azure-pipelines-deploy.yml"]
-        D["DevPlan: terraform plan<br/>(reads /home/ubuntu/tfvars/dev-app.tfvars)"]
+        D["DevPlan: terraform plan<br/>(reads /home/ubuntu/tfvars/dev/dev-app.tfvars)"]
         E["DevApply: terraform apply<br/>(Environment: dev-app-deployment - manual approval)"]
-        F["ProdPlan: terraform plan<br/>(reads /home/ubuntu/tfvars/prod-app.tfvars)"]
+        F["ProdPlan: terraform plan<br/>(reads /home/ubuntu/tfvars/prod/prod-app.tfvars)"]
         G["ProdApply: terraform apply<br/>(Environment: prod-app-deployment - manual approval)"]
         D --> E
         F --> G
