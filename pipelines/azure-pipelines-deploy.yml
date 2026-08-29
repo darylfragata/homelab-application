@@ -1,13 +1,17 @@
-trigger: none # only runs via the resource trigger below, never directly on push
+# trigger: none # only runs via the resource trigger below, never directly on push
 
-resources:
-  pipelines:
-    - pipeline: terraformChecksTrigger
-      source: azure-pipelines-terraform-checks # must match this pipeline's name in ADO Pipelines
-      trigger:
-        branches:
-          include:
-            - develop
+# resources:
+#   pipelines:
+#     - pipeline: terraformChecksTrigger
+#       source: azure-pipelines-terraform-checks # must match this pipeline's name in ADO Pipelines
+#       trigger:
+#         branches:
+#           include:
+#             - develop
+trigger:
+  branches:
+    include:
+      - develop
 
 pool:
   name: AWS-Agents # self-hosted agent pool
