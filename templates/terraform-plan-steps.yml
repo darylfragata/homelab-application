@@ -15,7 +15,7 @@ steps:
   displayName: 'Terraform Validate (${{ parameters.envDir }})'
   workingDirectory: envs/${{ parameters.envDir }}
 
-- script: terraform plan -var-file=/home/ubuntu/tfvars/${{ parameters.tfvarsFile }}.tfvars -out=tfplan
+- script: terraform plan -var-file=/home/ubuntu/tfvars/${{ parameters.envDir }}/${{ parameters.tfvarsFile }}.tfvars -out=tfplan
   displayName: 'Terraform Plan (${{ parameters.envDir }})'
   workingDirectory: envs/${{ parameters.envDir }}
 
