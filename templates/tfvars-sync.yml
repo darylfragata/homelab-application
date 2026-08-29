@@ -1,0 +1,11 @@
+parameters:
+- name: tfvarsFile    # local filename stem on the agent, e.g. dev-app, prod-app
+  type: string
+- name: tfvarsS3Uri   # s3://df-iac-tfvars/... path to this environment's .tfvars file
+  type: string
+
+steps:
+- checkout: self
+
+- script: aws s3 cp ${{ parameters.tfvarsS3Uri }} /home/ubuntu/tfvars/${{ parameters.tfvarsFile }}.tfvars
+  displayName: 'Fetch tfvars (${{ parameters.tfvarsFile }})'

@@ -1,0 +1,68 @@
+trigger: none # only runs via the resource trigger below, never directly on push
+
+resources:
+  pipelines:
+    - pipeline: terraformChecksTrigger
+      source: azure-pipelines-terraform-checks # must match this pipeline's name in ADO Pipelines
+      trigger:
+        branches:
+          include:
+            - develop
+
+pool:
+  name: AWS-Agents # self-hosted agent pool (matches infra_env in tfvars-sync-pipeline.yml)
+
+stages:
+  - stage: DevPlan
+    displayName: "Plan (dev)"
+    dependsOn: [] # explicit - no dependency, runs automatically on every trigger
+    jobs:
+      - job: DevPlan
+        displayName: "Plan (dev)"
+        steps:
+          - template: /templates/terraform-plan-steps.yml
+            parameters:
+              envDir: dev
+              tfvarsFile: dev-app # synced onto the agent by tfvars-sync-pipeline.yml
+
+  - stage: DevApply
+    displayName: "Apply (dev)"
+    dependsOn: DevPlan
+    jobs:
+      - deployment: DevApply
+        displayName: "Apply (dev)"
+        environment: dev-app-deployment # ADO Environment - approval gate configured in Library UI, not here
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: /templates/terraform-apply-steps.yml
+                  parameters:
+                    envDir: dev
+
+  - stage: ProdPlan
+    displayName: "Plan (prod)"
+    dependsOn: [] # explicit - fully independent, no dependency on Dev at all
+    jobs:
+      - job: ProdPlan
+        displayName: "Plan (prod)"
+        steps:
+          - template: /templates/terraform-plan-steps.yml
+            parameters:
+              envDir: prod
+              tfvarsFile: prod-app # synced onto the agent by tfvars-sync-pipeline.yml
+
+  - stage: ProdApply
+    displayName: "Apply (prod)"
+    dependsOn: ProdPlan
+    jobs:
+      - deployment: ProdApply
+        displayName: "Apply (prod)"
+        environment: prod-app-deployment # ADO Environment - approval gate configured in Library UI, not here
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: /templates/terraform-apply-steps.yml
+                  parameters:
+                    envDir: prod

@@ -41,6 +41,14 @@ stages:
             displayName: 'Terraform Validate (dev)'
             workingDirectory: envs/dev
 
+          - script: terraform init -backend=false
+            displayName: 'Terraform Init (prod)'
+            workingDirectory: envs/prod
+
+          - script: terraform validate
+            displayName: 'Terraform Validate (prod)'
+            workingDirectory: envs/prod
+
           - script: |
               set -e
               TFLINT_DIR=$(Agent.ToolsDirectory)/tflint/$(TFLINT_VERSION)
