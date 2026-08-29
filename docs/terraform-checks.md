@@ -154,22 +154,33 @@ checkov -d . --check CKV_AWS_40,CKV_AWS_1,CKV_AWS_62,CKV_AWS_63,CKV_AWS_355 --co
 
 ---
 
-## How this fits into CD (not built yet)
+## How this fits into CD
 
 This pipeline only checks and reports — it never runs `terraform apply`.
-The `terraform-checks-summary` artifact it publishes on success is designed
-to be the trigger for a downstream **Classic Release pipeline** (Azure
-DevOps' UI-defined multi-stage release construct) that would actually
-deploy.
+Deploying is `pipelines/azure-pipelines-deploy.yml`, a separate YAML
+pipeline (same shape as `homelab-infrastructure`'s: Plan runs automatically,
+Apply is a `deployment` job bound to an ADO Environment so it pauses for
+manual approval — `dev-app-deployment`/`prod-app-deployment`).
 
-The one non-obvious part: a Classic Release pipeline needs two separate
-artifact sources, not one. The `terraform-checks-summary` artifact proves
-the commit passed the gate and triggers the release, but it isn't the
-Terraform source itself — this build deliberately doesn't publish a copy of
-`envs/`/`modules/`/`ssm_template/` (see "Publish Checks Summary" in the
-pipeline YAML). So the Release definition also links the Git repository
-directly as a second artifact source, checked out at that same commit, to
-get the actual files `terraform plan`/`apply` needs.
+The earlier plan for this was a Classic Release pipeline (Azure DevOps' UI-
+defined multi-stage release construct), triggered by the
+`terraform-checks-summary` artifact this pipeline publishes. That was
+changed in favor of a YAML pipeline instead, for the same reason
+`homelab-infrastructure` uses one: it's reviewable as code rather than only
+existing as portal configuration. The same "broken commit never reaches Dev
+or Prod" property is preserved differently: `azure-pipelines-deploy.yml`
+doesn't trigger on push itself (`trigger: none`) — it declares this
+pipeline as a `resources.pipelines` trigger source instead, so it only
+starts once this checks pipeline succeeds on `develop`.
+
+Terraform variables for Plan/Apply come from `.tfvars` files on the agent's
+disk — but this repo has no tfvars-sync pipeline of its own.
+`homelab-infrastructure`'s `tfvars-sync-pipeline.yml` was changed from
+copying one named file per environment (`aws s3 cp`) to syncing the *whole*
+`df-iac-tfvars` bucket (`aws s3 sync`), so as long as `dev-app.tfvars`/
+`prod-app.tfvars` are uploaded flat at the bucket root (no subfolder — see
+`homelab-prereqs/03-upload-tfvars.sh`), that one shared sync covers this
+repo's tfvars too. No duplicate sync mechanism needed here.
 
 ```mermaid
 flowchart TD
@@ -181,17 +192,19 @@ flowchart TD
         B -->|all checks pass| C
     end
 
-    C -->|CD trigger| D
+    C -->|resources.pipelines trigger| D
 
-    subgraph RELEASE["Classic Release pipeline (CD) — not built yet"]
-        D["Artifact sources:<br/>1. Build: terraform-checks-summary (trigger/gate)<br/>2. Git: homelab-application @ same commit (source)"]
-        E["Stage: Dev<br/>terraform plan + apply"]
-        F{"Manual approval"}
-        G["Stage: Prod<br/>terraform plan + apply"]
-        D --> E --> F --> G
+    subgraph DEPLOY["Deploy pipeline (AWS-Agents) — azure-pipelines-deploy.yml"]
+        D["DevPlan: terraform plan<br/>(reads /home/ubuntu/tfvars/dev-app.tfvars)"]
+        E["DevApply: terraform apply<br/>(Environment: dev-app-deployment - manual approval)"]
+        F["ProdPlan: terraform plan<br/>(reads /home/ubuntu/tfvars/prod-app.tfvars)"]
+        G["ProdApply: terraform apply<br/>(Environment: prod-app-deployment - manual approval)"]
+        D --> E
+        F --> G
     end
 ```
 
 If a check fails, the build stops before the "Publish artifact" step, so
-there's nothing for the Release pipeline to trigger on — a broken commit
-never reaches Dev or Prod.
+the deploy pipeline's resource trigger never fires — a broken commit never
+reaches Dev or Prod. Dev and Prod Plan/Apply are independent of each other
+(mirrors `homelab-infrastructure`'s pipeline), not sequential.
