@@ -6,7 +6,7 @@ Application-layer AWS resources (Lambda, IAM, SSM Parameter Store) for the homel
 
 - `envs/dev/` — root module: `main.tf`, `variables.tf`, `locals.tf`, `outputs.tf`, `provider.tf` (Terraform `>= 1.7.0`), `backend.tf`, `remote_state.tf` (reads `homelab-infrastructure` state), `policy.tf` (named IAM policy docs). Owns `dev.darylfragata.com`'s portfolio bucket plus the (currently empty) Lambda POC scaffolding.
 - `envs/prod/` — lean root module, `portfolio_site` only (no VPC/Lambda): `main.tf`, `variables.tf`, `outputs.tf`, `provider.tf`, `backend.tf`. Owns `darylfragata.com`'s portfolio bucket — reassigned here from `envs/dev` via `terraform state rm`/`import`, not recreated.
-- `templates/` — shared pipeline step templates (`terraform-plan-steps.yml`, `terraform-apply-steps.yml`, `tfvars-sync.yml`), same shape as `homelab-infrastructure`'s.
+- `templates/` — shared pipeline step templates (`terraform-plan-steps.yml`, `terraform-apply-steps.yml`), same shape as `homelab-infrastructure`'s. No `tfvars-sync.yml` here — `homelab-infrastructure`'s tfvars sync now covers this repo too (see CI/CD below).
 - `modules/lambda_backend/` — per-function Lambda: IAM role/assume-role policy, `AWSLambdaBasicExecutionRole` attachment, optional dedicated SSM config parameter (sourced from `ssm_template/<function_name>.json`, falls back to a placeholder if missing), extra attachable policy documents.
 - `modules/ssm_parameter/` — thin generic SSM Parameter Store resource wrapper.
 - `modules/vpc/` — intentionally empty passthrough (no resources); re-exposes `homelab-infrastructure`'s remote-state VPC/subnet IDs as `module.vpc.*` so callers don't reach into the remote-state data source directly. Scaffolding for a future feature (e.g. API Gateway VPC link).
@@ -19,12 +19,13 @@ Application-layer AWS resources (Lambda, IAM, SSM Parameter Store) for the homel
 
 ## CI/CD
 
-Three Azure Pipelines, all on the self-hosted `AWS-Agents` pool:
+Two Azure Pipelines in this repo, both on the self-hosted `AWS-Agents` pool:
 
 - `pipelines/azure-pipelines-terraform-checks.yml` — triggers on push to `develop`. Pinned `terraform fmt -check -recursive` / `init -backend=false` / `validate` in both `envs/dev` and `envs/prod` → pinned TFLint 0.53.0 (`--recursive --minimum-failure-severity=error`) → pinned Checkov 3.2.257: advisory full scan (non-blocking) then a blocking gate on `CKV_AWS_40,1,62,63,355` (IAM/wildcard/public-bucket checks) → publishes a `terraform-checks-summary` artifact. Check-only, never runs `apply`.
 - `pipelines/azure-pipelines-deploy.yml` — `trigger: none`; only starts via a `resources.pipelines` trigger off the checks pipeline's success on `develop` (so a failed check never reaches Dev or Prod). Plan runs automatically for both `dev`/`prod` (independent of each other); Apply is a `deployment` job bound to the `dev-app-deployment`/`prod-app-deployment` ADO Environments, gated by a manual approval configured there.
-- `pipelines/tfvars-sync-pipeline.yml` — `trigger: none`, manually run. Syncs `dev-app.tfvars`/`prod-app.tfvars` from the `df-iac-tfvars` S3 bucket onto the agent's local disk, gated behind the same two Environments.
 
-Same shape as `homelab-infrastructure`'s pipelines (ADR-005 in `homelab-documentation`) — see `docs/terraform-checks.md`'s mermaid diagram for how the three fit together.
+Tfvars (`dev-app.tfvars`/`prod-app.tfvars`) aren't synced by anything in this repo — `homelab-infrastructure`'s `tfvars-sync-pipeline.yml` does an `aws s3 sync` of the *entire* `df-iac-tfvars` bucket onto the agent, which covers this repo's tfvars too as long as they're uploaded flat (`s3://df-iac-tfvars/dev-app.tfvars`, no subfolder — see `homelab-prereqs/03-upload-tfvars.sh`).
+
+Same shape as `homelab-infrastructure`'s pipelines (ADR-005 in `homelab-documentation`) — see `docs/terraform-checks.md`'s mermaid diagram for how they fit together.
 
 For the reasoning behind specific lint/scan rule choices, read `docs/terraform-checks.md` rather than duplicating it here.

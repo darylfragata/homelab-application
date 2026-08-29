@@ -10,7 +10,7 @@ resources:
             - develop
 
 pool:
-  name: AWS-Agents # self-hosted agent pool (matches infra_env in tfvars-sync-pipeline.yml)
+  name: AWS-Agents # self-hosted agent pool
 
 stages:
   - stage: DevPlan
@@ -23,7 +23,7 @@ stages:
           - template: /templates/terraform-plan-steps.yml
             parameters:
               envDir: dev
-              tfvarsFile: dev-app # synced onto the agent by tfvars-sync-pipeline.yml
+              tfvarsFile: dev-app # synced onto the agent by homelab-infrastructure's tfvars-sync-pipeline.yml (aws s3 sync of the whole df-iac-tfvars bucket)
 
   - stage: DevApply
     displayName: "Apply (dev)"
@@ -50,7 +50,7 @@ stages:
           - template: /templates/terraform-plan-steps.yml
             parameters:
               envDir: prod
-              tfvarsFile: prod-app # synced onto the agent by tfvars-sync-pipeline.yml
+              tfvarsFile: prod-app # synced onto the agent by homelab-infrastructure's tfvars-sync-pipeline.yml (aws s3 sync of the whole df-iac-tfvars bucket)
 
   - stage: ProdApply
     displayName: "Apply (prod)"

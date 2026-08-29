@@ -173,12 +173,14 @@ doesn't trigger on push itself (`trigger: none`) — it declares this
 pipeline as a `resources.pipelines` trigger source instead, so it only
 starts once this checks pipeline succeeds on `develop`.
 
-Terraform variables for Plan/Apply come from `.tfvars` files synced onto
-the agent by a third pipeline, `pipelines/tfvars-sync-pipeline.yml`
-(manually triggered, `trigger: none`) — mirrors
-`homelab-infrastructure`'s `tfvars-sync-pipeline.yml` exactly, including
-gating the sync itself behind the same `dev-app-deployment`/
-`prod-app-deployment` Environments.
+Terraform variables for Plan/Apply come from `.tfvars` files on the agent's
+disk — but this repo has no tfvars-sync pipeline of its own.
+`homelab-infrastructure`'s `tfvars-sync-pipeline.yml` was changed from
+copying one named file per environment (`aws s3 cp`) to syncing the *whole*
+`df-iac-tfvars` bucket (`aws s3 sync`), so as long as `dev-app.tfvars`/
+`prod-app.tfvars` are uploaded flat at the bucket root (no subfolder — see
+`homelab-prereqs/03-upload-tfvars.sh`), that one shared sync covers this
+repo's tfvars too. No duplicate sync mechanism needed here.
 
 ```mermaid
 flowchart TD
