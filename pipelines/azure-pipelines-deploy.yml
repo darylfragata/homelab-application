@@ -1,13 +1,3 @@
-# trigger: none # only runs via the resource trigger below, never directly on push
-
-# resources:
-#   pipelines:
-#     - pipeline: terraformChecksTrigger
-#       source: azure-pipelines-terraform-checks # must match this pipeline's name in ADO Pipelines
-#       trigger:
-#         branches:
-#           include:
-#             - develop
 trigger:
   branches:
     include:
@@ -16,57 +6,118 @@ trigger:
 pool:
   name: AWS-Agents # self-hosted agent pool
 
+variables:
+  TERRAFORM_VERSION: '1.7.5' # matches provider.tf's required_version >= 1.7.0 - bump as needed
+  TFLINT_VERSION: '0.53.0' # bump as needed - https://github.com/terraform-linters/tflint/releases
+  CHECKOV_VERSION: '3.2.257' # bump as needed - https://github.com/bridgecrewio/checkov/releases
+
 stages:
-  - stage: DevPlan
-    displayName: "Plan (dev)"
-    dependsOn: [] # explicit - no dependency, runs automatically on every trigger
+  - stage: Validate
+    displayName: "Validate"
     jobs:
-      - job: DevPlan
-        displayName: "Plan (dev)"
+      - job: Validate
+        displayName: "Validate"
         steps:
-          - template: /templates/terraform-plan-steps.yml
-            parameters:
-              envDir: dev
-              tfvarsFile: dev-app # synced onto the agent by homelab-infrastructure's tfvars-sync-pipeline.yml (aws s3 sync of the whole df-iac-tfvars bucket)
+          - checkout: self
 
-  - stage: DevApply
-    displayName: "Apply (dev)"
-    dependsOn: DevPlan
-    jobs:
-      - deployment: DevApply
-        displayName: "Apply (dev)"
-        environment: dev-app-deployment # ADO Environment - approval gate configured in Library UI, not here
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - template: /templates/terraform-apply-steps.yml
-                  parameters:
-                    envDir: dev
+          - script: |
+              set -e
+              TF_DIR=$(Agent.ToolsDirectory)/terraform/$(TERRAFORM_VERSION)
+              mkdir -p "$TF_DIR"
+              curl -sSL -o /tmp/terraform.zip https://releases.hashicorp.com/terraform/$(TERRAFORM_VERSION)/terraform_$(TERRAFORM_VERSION)_linux_amd64.zip
+              unzip -o -q /tmp/terraform.zip -d "$TF_DIR"
+              chmod +x "$TF_DIR/terraform"
+              echo "##vso[task.prependpath]$TF_DIR"
+            displayName: 'Install Terraform $(TERRAFORM_VERSION)'
 
-  - stage: ProdPlan
-    displayName: "Plan (prod)"
-    dependsOn: [] # explicit - fully independent, no dependency on Dev at all
-    jobs:
-      - job: ProdPlan
-        displayName: "Plan (prod)"
-        steps:
-          - template: /templates/terraform-plan-steps.yml
-            parameters:
-              envDir: prod
-              tfvarsFile: prod-app # synced onto the agent by homelab-infrastructure's tfvars-sync-pipeline.yml (aws s3 sync of the whole df-iac-tfvars bucket)
+          - script: terraform fmt -check -recursive
+            displayName: 'Terraform Fmt Check'
 
-  - stage: ProdApply
-    displayName: "Apply (prod)"
-    dependsOn: ProdPlan
-    jobs:
-      - deployment: ProdApply
-        displayName: "Apply (prod)"
-        environment: prod-app-deployment # ADO Environment - approval gate configured in Library UI, not here
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - template: /templates/terraform-apply-steps.yml
-                  parameters:
-                    envDir: prod
+          - script: terraform init -backend=false
+            displayName: 'Terraform Init (dev)'
+            workingDirectory: envs/dev
+
+          - script: terraform validate
+            displayName: 'Terraform Validate (dev)'
+            workingDirectory: envs/dev
+
+          - script: terraform init -backend=false
+            displayName: 'Terraform Init (prod)'
+            workingDirectory: envs/prod
+
+          - script: terraform validate
+            displayName: 'Terraform Validate (prod)'
+            workingDirectory: envs/prod
+
+          - script: |
+              set -e
+              TFLINT_DIR=$(Agent.ToolsDirectory)/tflint/$(TFLINT_VERSION)
+              mkdir -p "$TFLINT_DIR"
+              curl -sSL -o /tmp/tflint.zip https://github.com/terraform-linters/tflint/releases/download/v$(TFLINT_VERSION)/tflint_linux_amd64.zip
+              unzip -o -q /tmp/tflint.zip -d "$TFLINT_DIR"
+              chmod +x "$TFLINT_DIR/tflint"
+              echo "##vso[task.prependpath]$TFLINT_DIR"
+            displayName: 'Install TFLint $(TFLINT_VERSION)'
+
+          - script: tflint --recursive --minimum-failure-severity=error
+            displayName: 'TFLint'
+
+          - script: |
+              set -e
+              python3 -m pip install --user --break-system-packages "checkov==$(CHECKOV_VERSION)"
+              echo "##vso[task.prependpath]$HOME/.local/bin"
+            displayName: 'Install Checkov $(CHECKOV_VERSION)'
+            # --break-system-packages overrides Debian/Ubuntu's PEP 668 guard;
+            # --user still confines the install to the user site-packages,
+            # not the OS's apt-managed dist-packages, so this doesn't touch
+            # anything apt owns.
+
+          - script: checkov -d . --compact --quiet
+            displayName: 'Checkov Scan (warn-only)'
+            continueOnError: true # advisory for now - full ruleset, not yet a merge blocker
+
+          - script: checkov -d . --check CKV_AWS_40,CKV_AWS_1,CKV_AWS_62,CKV_AWS_63,CKV_AWS_355 --compact --quiet
+            displayName: 'Checkov Scan (blocking)'
+            # no continueOnError - hard-fails on: CKV_AWS_40 (IAM policy
+            # attached to user), CKV_AWS_1 (S3 bucket policy), CKV_AWS_62
+            # (IAM policy allows full admin - wildcard action + resource),
+            # CKV_AWS_63 (wildcard "*" action in an IAM policy), CKV_AWS_355
+            # (wildcard "*" resource for an action that supports scoping)
+
+          - script: |
+              set -e
+              mkdir -p $(Build.ArtifactStagingDirectory)/terraform-checks-summary
+              cat > $(Build.ArtifactStagingDirectory)/terraform-checks-summary/summary.json <<EOF
+              {
+                "status": "passed",
+                "commit": "$(Build.SourceVersion)",
+                "branch": "$(Build.SourceBranchName)",
+                "buildId": "$(Build.BuildId)",
+                "checkedAt": "$(System.PipelineStartTime)",
+                "terraformVersion": "$(TERRAFORM_VERSION)",
+                "tflintVersion": "$(TFLINT_VERSION)",
+                "checkovVersion": "$(CHECKOV_VERSION)",
+                "blockingChecks": ["CKV_AWS_40", "CKV_AWS_1", "CKV_AWS_62", "CKV_AWS_63", "CKV_AWS_355"]
+              }
+              EOF
+            displayName: 'Write Checks Summary'
+
+          - publish: $(Build.ArtifactStagingDirectory)/terraform-checks-summary
+            artifact: terraform-checks-summary
+            displayName: 'Publish Checks Summary'
+
+  - template: /templates/env-deploy.yml
+    parameters:
+      envName: Dev
+      envDir: dev
+      tfvarsFile: dev-app # synced onto the agent by homelab-infrastructure's tfvars-sync-pipeline.yml (aws s3 sync of the whole df-iac-tfvars bucket)
+      environmentName: dev-app-deployment
+      dependsOn: Validate
+
+  - template: /templates/env-deploy.yml
+    parameters:
+      envName: Prod
+      envDir: prod
+      tfvarsFile: prod-app # synced onto the agent by homelab-infrastructure's tfvars-sync-pipeline.yml (aws s3 sync of the whole df-iac-tfvars bucket)
+      environmentName: prod-app-deployment
+      dependsOn: DevApply # sequential - Prod does not even plan until Dev has fully applied

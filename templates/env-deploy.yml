@@ -1,0 +1,40 @@
+parameters:
+- name: envName        # PascalCase stage/job name prefix, e.g. Dev, Prod
+  type: string
+- name: envDir         # directory under envs/, e.g. dev, prod
+  type: string
+- name: tfvarsFile     # local filename stem on the agent (synced by homelab-infrastructure's tfvars-sync.yml), e.g. dev-app, prod-app
+  type: string
+- name: environmentName # ADO Environment name for the Apply approval gate, e.g. dev-app-deployment
+  type: string
+- name: dependsOn      # stage(s) the Plan stage waits on - a stage name, list of names, or [] for none
+  type: object
+  default: []
+
+stages:
+- stage: ${{ parameters.envName }}Plan
+  displayName: "Plan (${{ parameters.envDir }})"
+  dependsOn: ${{ parameters.dependsOn }}
+  jobs:
+    - job: ${{ parameters.envName }}Plan
+      displayName: "Plan (${{ parameters.envDir }})"
+      steps:
+        - template: /templates/terraform-plan-steps.yml
+          parameters:
+            envDir: ${{ parameters.envDir }}
+            tfvarsFile: ${{ parameters.tfvarsFile }}
+
+- stage: ${{ parameters.envName }}Apply
+  displayName: "Apply (${{ parameters.envDir }})"
+  dependsOn: ${{ parameters.envName }}Plan
+  jobs:
+    - deployment: ${{ parameters.envName }}Apply
+      displayName: "Apply (${{ parameters.envDir }})"
+      environment: ${{ parameters.environmentName }} # ADO Environment - approval gate configured in Library UI, not here
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - template: /templates/terraform-apply-steps.yml
+                parameters:
+                  envDir: ${{ parameters.envDir }}
