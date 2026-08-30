@@ -118,7 +118,7 @@ launch, across hundreds of built-in AWS/Azure/GCP/Kubernetes policies.
 2. **Blocking gate** (only these checks fail the build) — still active:
 
    ```bash
-   checkov -d . --check CKV_AWS_40,CKV_AWS_1,CKV_AWS_62,CKV_AWS_63,CKV_AWS_355 --compact --quiet
+   checkov -d . --check CKV_AWS_40,CKV_AWS_62,CKV_AWS_63,CKV_AWS_355 --compact --quiet
    ```
 
 | Check         | Catches                                                                                                          |
@@ -127,7 +127,13 @@ launch, across hundreds of built-in AWS/Azure/GCP/Kubernetes policies.
 | `CKV_AWS_63`  | IAM policy statement uses `"*"` as its action                                                                   |
 | `CKV_AWS_355` | IAM policy statement uses `"*"` as its resource, for an action that supports scoping                            |
 | `CKV_AWS_40`  | IAM policy attached directly to a user instead of a role/group                                                  |
-| `CKV_AWS_1`   | S3 bucket policy allows public access                                                                           |
+
+`CKV_AWS_1` (S3 bucket policy allows public access) is deliberately **not**
+in the `--check` list above, even though it's one of the checks this gate
+conceptually cares about — it's permanently skip-checked below for
+`modules/portfolio_site`'s intentional public bucket, and Checkov's CLI
+hard-errors (`--check` and `--skip-check` must be mutually exclusive) if a
+check ID appears in both at once.
 
 **Suppressed checks** (documented in `.checkov.yaml` at the repo root, with
 the reason inline as a comment — not silently skipped):
@@ -142,8 +148,8 @@ the reason inline as a comment — not silently skipped):
 
 ```bash
 pip install checkov
-checkov -d . --compact --quiet                                              # full scan
-checkov -d . --check CKV_AWS_40,CKV_AWS_1,CKV_AWS_62,CKV_AWS_63,CKV_AWS_355 --compact --quiet  # just the gate
+checkov -d . --compact --quiet                                          # full scan
+checkov -d . --check CKV_AWS_40,CKV_AWS_62,CKV_AWS_63,CKV_AWS_355 --compact --quiet  # just the gate
 ```
 
 ---

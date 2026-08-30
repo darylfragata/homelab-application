@@ -80,13 +80,17 @@ stages:
           # this check and haven't been triaged yet. The blocking gate below
           # (the check this whole initiative was built for) is unaffected.
 
-          - script: checkov -d . --check CKV_AWS_40,CKV_AWS_1,CKV_AWS_62,CKV_AWS_63,CKV_AWS_355 --compact --quiet
+          - script: checkov -d . --check CKV_AWS_40,CKV_AWS_62,CKV_AWS_63,CKV_AWS_355 --compact --quiet
             displayName: 'Checkov Scan (blocking)'
             # no continueOnError - hard-fails on: CKV_AWS_40 (IAM policy
-            # attached to user), CKV_AWS_1 (S3 bucket policy), CKV_AWS_62
-            # (IAM policy allows full admin - wildcard action + resource),
-            # CKV_AWS_63 (wildcard "*" action in an IAM policy), CKV_AWS_355
-            # (wildcard "*" resource for an action that supports scoping)
+            # attached to user), CKV_AWS_62 (IAM policy allows full admin -
+            # wildcard action + resource), CKV_AWS_63 (wildcard "*" action in
+            # an IAM policy), CKV_AWS_355 (wildcard "*" resource for an action
+            # that supports scoping). CKV_AWS_1 (S3 bucket policy allows
+            # public access) is deliberately NOT in this list - it's globally
+            # skip-checked in .checkov.yaml for modules/portfolio_site's
+            # intentional public bucket, and Checkov refuses to run at all if
+            # a check ID appears in both --check and --skip-check.
 
           - script: |
               set -e
@@ -101,7 +105,7 @@ stages:
                 "terraformVersion": "$(TERRAFORM_VERSION)",
                 "tflintVersion": "$(TFLINT_VERSION)",
                 "checkovVersion": "$(CHECKOV_VERSION)",
-                "blockingChecks": ["CKV_AWS_40", "CKV_AWS_1", "CKV_AWS_62", "CKV_AWS_63", "CKV_AWS_355"]
+                "blockingChecks": ["CKV_AWS_40", "CKV_AWS_62", "CKV_AWS_63", "CKV_AWS_355"]
               }
               EOF
             displayName: 'Write Checks Summary'
