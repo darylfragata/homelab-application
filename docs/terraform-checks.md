@@ -1,7 +1,8 @@
 # Terraform Checks — Tool Reference
 
-`pipelines/azure-pipelines-terraform-checks.yml` runs on every push to
-`develop`, on the self-hosted `AWS-Agents` pool. The starting need was
+The `Validate` stage of `pipelines/azure-pipelines-deploy.yml` runs on every
+push to `develop`, on the self-hosted `AWS-Agents` pool, before Dev is even
+planned. The starting need was
 simple: a way to check Terraform-defined IAM policies for problems —
 overly-broad wildcards especially — before they reach production. That
 search led to Checkov, which turned out to cover far more than just IAM (a
@@ -145,9 +146,9 @@ checkov -d . --check CKV_AWS_40,CKV_AWS_1,CKV_AWS_62,CKV_AWS_63,CKV_AWS_355 --co
 ## Adding or changing a blocking check
 
 1. Find the check ID on the [Checkov policy index](https://www.checkov.io/5.Policy%20Index/terraform.html).
-2. Add it to the `--check` list in the blocking `checkov` step in
-   `pipelines/azure-pipelines-terraform-checks.yml`, and update the comment
-   below that step.
+2. Add it to the `--check` list in the blocking `checkov` step of the
+   `Validate` stage in `pipelines/azure-pipelines-deploy.yml`, and update the
+   comment below that step.
 3. If a check doesn't apply to this repo's architecture, add it to
    `.checkov.yaml`'s `skip-check` list instead — with a one-line reason as
    an inline comment, not silently.
@@ -156,22 +157,22 @@ checkov -d . --check CKV_AWS_40,CKV_AWS_1,CKV_AWS_62,CKV_AWS_63,CKV_AWS_355 --co
 
 ## How this fits into CD
 
-This pipeline only checks and reports — it never runs `terraform apply`.
-Deploying is `pipelines/azure-pipelines-deploy.yml`, a separate YAML
-pipeline (same shape as `homelab-infrastructure`'s: Plan runs automatically,
-Apply is a `deployment` job bound to an ADO Environment so it pauses for
-manual approval — `dev-app-deployment`/`prod-app-deployment`).
+`Validate` only checks and reports — it never runs `terraform apply`. It's
+the first stage of `pipelines/azure-pipelines-deploy.yml` (same overall
+shape as `homelab-infrastructure`'s pipeline), followed by Dev's Plan/Apply
+and then Prod's Plan/Apply, each via the reusable `templates/env-deploy.yml`
+stage template. Dev and Prod are sequential — Prod's Plan stage has
+`dependsOn: DevApply`, so it doesn't even start until Dev has fully applied.
 
-The earlier plan for this was a Classic Release pipeline (Azure DevOps' UI-
-defined multi-stage release construct), triggered by the
-`terraform-checks-summary` artifact this pipeline publishes. That was
-changed in favor of a YAML pipeline instead, for the same reason
-`homelab-infrastructure` uses one: it's reviewable as code rather than only
-existing as portal configuration. The same "broken commit never reaches Dev
-or Prod" property is preserved differently: `azure-pipelines-deploy.yml`
-doesn't trigger on push itself (`trigger: none`) — it declares this
-pipeline as a `resources.pipelines` trigger source instead, so it only
-starts once this checks pipeline succeeds on `develop`.
+This used to be two separate pipelines — a checks-only pipeline and a
+`trigger: none` deploy pipeline wired together by a `resources.pipelines`
+trigger — split that way so a broken commit could never reach Dev or Prod.
+That cross-pipeline trigger turned out to be fragile in practice (easy to
+leave disconnected without either pipeline visibly failing), so `Validate`
+was folded into the deploy pipeline as its first stage instead: the same
+"broken commit never reaches Dev or Prod" property now holds simply because
+stages run in order and a failed stage blocks everything after it — no
+separate trigger wiring to keep in sync.
 
 Terraform variables for Plan/Apply come from `.tfvars` files on the agent's
 disk — but this repo has no tfvars-sync pipeline of its own.
@@ -188,25 +189,21 @@ repo's tfvars too, landing at `/home/ubuntu/tfvars/dev/dev-app.tfvars` /
 flowchart TD
     A["Developer pushes to develop"] --> B
 
-    subgraph BUILD["Build pipeline (AWS-Agents) — azure-pipelines-terraform-checks.yml"]
-        B["Terraform Checks stage:<br/>fmt · init · validate · tflint · checkov (scan) · checkov (gate)"]
+    subgraph PIPELINE["azure-pipelines-deploy.yml (AWS-Agents)"]
+        B["Validate stage:<br/>fmt · init · validate · tflint · checkov (scan) · checkov (gate)"]
         C["Publish artifact:<br/>terraform-checks-summary"]
         B -->|all checks pass| C
-    end
 
-    C -->|resources.pipelines trigger| D
+        D["Dev Plan: terraform plan<br/>(reads /home/ubuntu/tfvars/dev/dev-app.tfvars)"]
+        E["Dev Apply: terraform apply<br/>(Environment: dev-app-deployment - manual approval)"]
+        F["Prod Plan: terraform plan<br/>(reads /home/ubuntu/tfvars/prod/prod-app.tfvars)"]
+        G["Prod Apply: terraform apply<br/>(Environment: prod-app-deployment - manual approval)"]
 
-    subgraph DEPLOY["Deploy pipeline (AWS-Agents) — azure-pipelines-deploy.yml"]
-        D["DevPlan: terraform plan<br/>(reads /home/ubuntu/tfvars/dev/dev-app.tfvars)"]
-        E["DevApply: terraform apply<br/>(Environment: dev-app-deployment - manual approval)"]
-        F["ProdPlan: terraform plan<br/>(reads /home/ubuntu/tfvars/prod/prod-app.tfvars)"]
-        G["ProdApply: terraform apply<br/>(Environment: prod-app-deployment - manual approval)"]
-        D --> E
-        F --> G
+        C --> D --> E --> F --> G
     end
 ```
 
-If a check fails, the build stops before the "Publish artifact" step, so
-the deploy pipeline's resource trigger never fires — a broken commit never
-reaches Dev or Prod. Dev and Prod Plan/Apply are independent of each other
-(mirrors `homelab-infrastructure`'s pipeline), not sequential.
+If `Validate` fails, the pipeline stops there — a broken commit never
+reaches Dev or Prod. Dev and Prod are sequential: Prod's Plan stage doesn't
+start until Dev's Apply has succeeded (unlike `homelab-infrastructure`'s
+pipeline, where Dev/Prod still run independently).
