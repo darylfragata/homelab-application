@@ -102,15 +102,20 @@ acquired by Palo Alto Networks in March 2021 and folded into Prisma Cloud.
 The CLI stayed free and open source (Apache-2.0). 80M+ downloads since
 launch, across hundreds of built-in AWS/Azure/GCP/Kubernetes policies.
 
-**How we run it — two passes:**
+**How we run it:**
 
-1. **Advisory scan** (full default ruleset, doesn't block the build):
+1. **Advisory scan** (full default ruleset, doesn't block the build) —
+   **temporarily disabled in the pipeline.** It surfaces ~20 pre-existing
+   findings across `modules/lambda_backend` and `modules/portfolio_site`
+   (log/env-var encryption, DLQ, S3 hardening, etc.) that predate this check
+   and haven't been triaged yet. Run it locally when you get a chance to go
+   through them:
 
    ```bash
    checkov -d . --compact --quiet
    ```
 
-2. **Blocking gate** (only these checks fail the build):
+2. **Blocking gate** (only these checks fail the build) — still active:
 
    ```bash
    checkov -d . --check CKV_AWS_40,CKV_AWS_1,CKV_AWS_62,CKV_AWS_63,CKV_AWS_355 --compact --quiet
