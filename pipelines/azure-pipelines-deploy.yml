@@ -3,6 +3,8 @@ trigger:
     include:
       - develop
 
+pr: none # this pipeline runs terraform apply against real AWS resources - never trigger it from a PR
+
 pool:
   name: AWS-Agents # self-hosted agent pool
 
